@@ -55,12 +55,9 @@ def prog_token_to_indices(prog, numbers, number_indices, max_seq_length,
                     if str_to_num(num) == str_to_num(token):
                         cur_num_idx = num_idx
                         break
-            # print(prog)
-            # print(token)
-            # # print(const_list)
-            # print(numbers)
-            # print("###########")
-            assert cur_num_idx != -1
+            if cur_num_idx == -1:
+                # skip invalid example if number not found
+                return None
             prog_indices.append(op_list_size + const_list_size +
                                 number_indices[cur_num_idx])
     return prog_indices
@@ -126,22 +123,6 @@ class InputFeatures(object):
 
 
 def tokenize(tokenizer, text, apply_basic_tokenization=False):
-    """Tokenizes text, optionally looking up special tokens separately.
-
-    Args:
-      tokenizer: a tokenizer from bert.tokenization.FullTokenizer
-      text: text to tokenize
-      apply_basic_tokenization: If True, apply the basic tokenization. If False,
-        apply the full tokenization (basic + wordpiece).
-
-    Returns:
-      tokenized text.
-
-    A special token is any text with no spaces enclosed in square brackets with no
-    space, so we separate those out and look them up in the dictionary before
-    doing actual tokenization.
-    """
-
     if conf.pretrained_model in ["bert", "finbert"]:
         _SPECIAL_TOKENS_RE = re.compile(r"^\[[^ ]*\]$", re.UNICODE)
     elif conf.pretrained_model in ["roberta", "longformer", "gpt2"]:
@@ -166,10 +147,8 @@ def tokenize(tokenizer, text, apply_basic_tokenization=False):
 
 def _detokenize(tokens):
     text = " ".join(tokens)
-
     text = text.replace(" ##", "")
     text = text.replace("##", "")
-
     text = text.strip()
     text = " ".join(text.split())
     return text
@@ -209,25 +188,19 @@ def convert_single_mathqa_example(example, is_training, tokenizer, max_seq_lengt
     segment_ids = [0] * len(tokens)
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
     input_mask = [1] * len(input_ids)
     for ind, offset in enumerate(example.number_indices):
         if offset < len(input_mask):
             input_mask[offset] = 2
         else:
-            if is_training == True:
-
-                # invalid example, drop for training
-                return features
-
-            # assert is_training == False
+            if is_training:
+                return features  # skip invalid training example
 
     padding = [0] * (max_seq_length - len(input_ids))
     input_ids.extend(padding)
     input_mask.extend(padding)
     segment_ids.extend(padding)
 
-    # print(len(input_ids))
     assert len(input_ids) == max_seq_length
     assert len(input_mask) == max_seq_length
     assert len(segment_ids) == max_seq_length
@@ -248,11 +221,11 @@ def convert_single_mathqa_example(example, is_training, tokenizer, max_seq_lengt
     number_indices = example.number_indices
     program = example.program
     if program is not None and is_training:
-
-        # print(example.id)
         program_ids = prog_token_to_indices(program, numbers, number_indices,
                                             max_seq_length, op_list, op_list_size,
                                             const_list, const_list_size)
+        if program_ids is None:
+            return features  # skip if program mapping failed
         program_mask = [1] * len(program_ids)
         program_ids = program_ids[:max_program_length]
         program_mask = program_mask[:max_program_length]
@@ -264,8 +237,10 @@ def convert_single_mathqa_example(example, is_training, tokenizer, max_seq_lengt
         program = ""
         program_ids = [0] * max_program_length
         program_mask = [0] * max_program_length
+
     assert len(program_ids) == max_program_length
     assert len(program_mask) == max_program_length
+
     features.append(
         InputFeatures(
             unique_id=-1,
@@ -285,17 +260,14 @@ def convert_single_mathqa_example(example, is_training, tokenizer, max_seq_lengt
     return features
 
 
-
 def read_mathqa_entry(entry, tokenizer):
-
     question = " ".join(entry["annotation"]["cur_dial"])
     this_id = entry["id"]
     context = ""
 
     if conf.retrieve_mode == "single":
         for ind, each_sent in entry["annotation"]["model_input"]:
-            context += each_sent
-            context += " "
+            context += each_sent + " "
     elif conf.retrieve_mode == "slide":
         if len(entry["annotation"]["pos_windows"]) > 0:
             context = random.choice(entry["annotation"]["pos_windows"])[0]
@@ -303,22 +275,17 @@ def read_mathqa_entry(entry, tokenizer):
             context = entry["annotation"]["neg_windows"][0][0]
     elif conf.retrieve_mode == "gold":
         for each_con in entry["annotation"]["gold_ind"]:
-            context += entry["annotation"]["gold_ind"][each_con]
-            context += " "
-
+            context += entry["annotation"]["gold_ind"][each_con] + " "
     elif conf.retrieve_mode == "none":
-        # no retriever, use longformer
         table = entry["table"]
         table_text = ""
         for row in table[1:]:
             this_sent = table_row_to_text(table[0], row)
             table_text += this_sent
-
         context = " ".join(entry["pre_text"]) + " " + \
-            " ".join(entry["post_text"]) + " " + table_text
+                  " ".join(entry["post_text"]) + " " + table_text
 
     context = context.strip()
-    # process "." and "*" in text
     context = context.replace(". . . . . .", "")
     context = context.replace("* * * * * *", "")
 
@@ -340,10 +307,8 @@ def read_mathqa_entry(entry, tokenizer):
                 number_indices.append(len(question_tokens) + 1)
         tok_proc = tokenize(tokenizer, tok)
         question_tokens.extend(tok_proc)
-
         answer = entry["annotation"]["exe_ans"]
 
-    # table headers
     for row in entry["table"]:
         tok = row[0]
         if tok and tok in original_question:
@@ -356,14 +321,13 @@ def read_mathqa_entry(entry, tokenizer):
         if 'cur_program' in entry["annotation"]:
             original_program = entry["annotation"]['cur_program']
             program = program_tokenization(original_program)
-
     elif conf.program_mode == "nest":
         if 'program_re' in entry["annotation"]:
             original_program = entry["annotation"]['cur_program_re']
             program = program_tokenization(original_program)
-
     else:
         program = None
+
     return MathQAExample(
         id=this_id,
         original_question=original_question,

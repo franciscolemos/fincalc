@@ -353,7 +353,7 @@ def read_mathqa_entry(entry, tokenizer):
 
     filename_id = entry["id"]
     question = " ".join(entry["annotation"]["cur_dial"])
-    all_positive = entry["annotation"]["gold_ind"]
+    all_positive = entry["annotation"].get("gold_ind", [])
 
     pre_text = entry["pre_text"]
     post_text = entry["post_text"]

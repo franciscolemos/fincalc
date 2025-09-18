@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Model checkpoints, weights, outputs
+*.json
+*.ckpt
+*.pth
+*.pt
+*.h5
+*.joblib
+*.pkl
+*.npz
+*.npy
+*.tar.gz
+*.gz
+
+# Generated data
+code/finqanet_generator/generator_ckpt/
+code/finqanet_retriever/cache/
+code/finqanet_retriever/output/
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+
+ConvFinQA.zip
+code/finqanet_retriever/finqanet_retriever.zip
