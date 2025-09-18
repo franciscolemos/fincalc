@@ -280,34 +280,173 @@ TASKS: Dict[str, Callable[[CLIConfig, List[str]], None]] = {
 # ---------------------------------------------------------------------------
 
 
+import pprint
+
+def print_tree(root: Path, prefix: str = "") -> None:
+    """Recursively print a directory tree."""
+    if not root.exists():
+        print(f"{prefix}(missing: {root})")
+        return
+
+    items = sorted(root.iterdir())
+    for idx, item in enumerate(items):
+        connector = "└── " if idx == len(items) - 1 else "├── "
+        print(f"{prefix}{connector}{item.name}")
+        if item.is_dir():
+            extension = "    " if idx == len(items) - 1 else "│   "
+            print_tree(item, prefix + extension)
+
+
+def view_models(config: CLIConfig) -> None:
+    print("\n📂 Retriever Models Tree")
+    print("=" * 40)
+    retriever_path = Path(config.retriever_output_dir)
+    print(f"{retriever_path}")
+    print_tree(retriever_path)
+
+    print("\n📂 Generator Models Tree")
+    print("=" * 40)
+    generator_path = Path(config.generator_output_dir)
+    print(f"{generator_path}")
+    print_tree(generator_path)
+
+
+def view_config_retriever(config: CLIConfig) -> None:
+    print("\n⚙️ Retriever Configuration")
+    print("=" * 40)
+    keys = [
+        "retriever_dir", "retriever_train_file", "retriever_valid_file", "retriever_test_file",
+        "retriever_output_dir", "retriever_save_path", "retriever_predictions"
+    ]
+    for k in keys:
+        print(f"{k}: {getattr(config, k)}")
+
+
+def view_config_generator(config: CLIConfig) -> None:
+    print("\n⚙️ Generator Configuration")
+    print("=" * 40)
+    keys = [
+        "generator_dir", "generator_train_file", "generator_valid_file", "generator_test_file",
+        "generator_output_dir"
+    ]
+    for k in keys:
+        print(f"{k}: {getattr(config, k)}")
+
+
+def config_menu(config: CLIConfig) -> None:
+    while True:
+        print("\nConfiguration Menu")
+        print("=" * 40)
+        print("[1] Retriever Configuration")
+        print("[2] Generator Configuration")
+        print("[0] Back")
+        choice = input("Select an option: ").strip()
+        if choice == "0":
+            return
+        elif choice == "1":
+            view_config_retriever(config)
+        elif choice == "2":
+            view_config_generator(config)
+        else:
+            print("❌ Invalid selection.")
+
+
+def retriever_menu(config: CLIConfig) -> None:
+    while True:
+        print("\nRetriever Tasks")
+        print("=" * 40)
+        print("[1] Train Retriever")
+        print("[2] Evaluate Retriever")
+        print("[3] Convert Dev Split")
+        print("[4] Convert Test Split")
+        print("[0] Back")
+        choice = input("Select an option: ").strip()
+        if choice == "0":
+            return
+        elif choice == "1":
+            train_retriever(config, [])
+        elif choice == "2":
+            eval_retriever(config, [])
+        elif choice == "3":
+            convert_split(config, "dev", [])
+        elif choice == "4":
+            convert_split(config, "test", [])
+        else:
+            print("❌ Invalid selection.")
+
+
+def generator_menu(config: CLIConfig) -> None:
+    while True:
+        print("\nGenerator Tasks")
+        print("=" * 40)
+        print("[1] Train Generator")
+        print("[2] Evaluate Generator")
+        print("[0] Back")
+        choice = input("Select an option: ").strip()
+        if choice == "0":
+            return
+        elif choice == "1":
+            train_generator(config, [])
+        elif choice == "2":
+            eval_generator(config, [])
+        else:
+            print("❌ Invalid selection.")
+
+
+def workflow_menu(config: CLIConfig) -> None:
+    while True:
+        print("\nSuggested Workflows")
+        print("=" * 40)
+        print("[1] Full Retriever Workflow (train → eval → convert)")
+        print("[2] Full Generator Workflow (train → eval)")
+        print("[0] Back")
+        choice = input("Select an option: ").strip()
+        if choice == "0":
+            return
+        elif choice == "1":
+            print("▶ Running full retriever workflow...")
+            train_retriever(config, [])
+            eval_retriever(config, [])
+            convert_split(config, "dev", [])
+            convert_split(config, "test", [])
+        elif choice == "2":
+            print("▶ Running full generator workflow...")
+            train_generator(config, [])
+            eval_generator(config, [])
+        else:
+            print("❌ Invalid selection.")
+
+
 def menu(config: CLIConfig, extra_args: List[str]) -> None:
     if extra_args:
         print("⚠️  Extra arguments ignored in menu mode.")
 
-    entries = list(TASKS.keys())
     while True:
-        print("\nConvFinQA CLI Menu")
-        print("=" * 22)
-        for idx, key in enumerate(entries, start=1):
-            print(f"[{idx}] {key.replace('-', ' ').title()}")
+        print("\nConvFinQA Interactive CLI")
+        print("=" * 40)
+        print("[1] Retriever Tasks")
+        print("[2] Generator Tasks")
+        print("[3] View Models (tree)")
+        print("[4] View Configuration")
+        print("[5] Suggested Workflows")
         print("[0] Exit")
 
         choice = input("Select an option: ").strip()
-        if choice == "0" or choice.lower() in {"q", "quit", "exit"}:
-            print("Goodbye!")
+        if choice == "0" or choice.lower() in {"q","quit","exit"}:
+            print("👋 Goodbye!")
             return
-
-        if not choice.isdigit() or int(choice) not in range(1, len(entries) + 1):
-            print("Invalid selection. Please try again.")
-            continue
-
-        task_key = entries[int(choice) - 1]
-        try:
-            TASKS[task_key](config, [])
-        except FileNotFoundError as err:
-            print(f"❌ {err}")
-        except CommandError as err:
-            print(f"❌ {err}")
+        elif choice == "1":
+            retriever_menu(config)
+        elif choice == "2":
+            generator_menu(config)
+        elif choice == "3":
+            view_models(config)
+        elif choice == "4":
+            config_menu(config)
+        elif choice == "5":
+            workflow_menu(config)
+        else:
+            print("❌ Invalid selection.")
 
 
 # ---------------------------------------------------------------------------
