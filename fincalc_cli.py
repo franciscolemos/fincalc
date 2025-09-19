@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """ConvFinQA command line interface.
 
 This script wraps the common Retriever and Generator workflows for ConvFinQA
@@ -11,8 +13,6 @@ Example usage:
     python convfinqa_cli.py train-retriever --config my_overrides.json
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -24,11 +24,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional
 
+# ---------------------------------------------------------------------------
+# Ensure project paths are importable
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+CODE_DIR = PROJECT_ROOT / "code"
+RETRIEVER_DIR = CODE_DIR / "finqanet_retriever"
+
+UTILS_DIR = CODE_DIR / "utils"
+
+for p in (CODE_DIR, RETRIEVER_DIR, UTILS_DIR):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+
+# Import ConvFinQA utilities
+from finqanet_retriever.finqa_utils import (
+    get_json_keys,
+    count_json_entries,
+    preview_samples,
+)
+
 
 # ---------------------------------------------------------------------------
 # Configuration handling
 # ---------------------------------------------------------------------------
-
 
 CONFIG_PATH_CANDIDATES: tuple[Path, ...] = (
     Path("convfinqa_cli.json"),
@@ -106,7 +127,6 @@ def load_config(config_path: Optional[str]) -> CLIConfig:
 
     return CLIConfig()
 
-
 # ---------------------------------------------------------------------------
 # Spinner utility
 # ---------------------------------------------------------------------------
@@ -151,7 +171,6 @@ class Spinner:
 # Command execution helpers
 # ---------------------------------------------------------------------------
 
-
 class CommandError(RuntimeError):
     pass
 
@@ -170,7 +189,6 @@ def run_subprocess(command: List[str], cwd: Optional[str], config: CLIConfig) ->
 def ensure_path_exists(path: str, kind: str = "file") -> None:
     expanded = os.path.expanduser(path)
     if "*" in expanded:
-        # Skip glob validation to avoid shell-specific expansion.
         return
     path_obj = Path(expanded)
     if kind == "file" and not path_obj.is_file():
@@ -182,7 +200,6 @@ def ensure_path_exists(path: str, kind: str = "file") -> None:
 # ---------------------------------------------------------------------------
 # Task implementations
 # ---------------------------------------------------------------------------
-
 
 def train_retriever(config: CLIConfig, extra_args: List[str]) -> None:
     ensure_path_exists(config.retriever_train_file)
@@ -274,27 +291,22 @@ TASKS: Dict[str, Callable[[CLIConfig, List[str]], None]] = {
     "eval-generator": eval_generator,
 }
 
-
 # ---------------------------------------------------------------------------
-# Interactive menu
+# Interactive menu helpers
 # ---------------------------------------------------------------------------
 
-
-import pprint
-
-def print_tree(root: Path, prefix: str = "") -> None:
-    """Recursively print a directory tree."""
+def print_tree(root: Path, prefix: str = "", depth: int = 3, level: int = 0) -> None:
+    """Recursively print a directory tree up to given depth."""
     if not root.exists():
         print(f"{prefix}(missing: {root})")
         return
-
     items = sorted(root.iterdir())
     for idx, item in enumerate(items):
         connector = "└── " if idx == len(items) - 1 else "├── "
         print(f"{prefix}{connector}{item.name}")
-        if item.is_dir():
+        if item.is_dir() and level < depth - 1:
             extension = "    " if idx == len(items) - 1 else "│   "
-            print_tree(item, prefix + extension)
+            print_tree(item, prefix + extension, depth, level + 1)
 
 
 def view_models(config: CLIConfig) -> None:
@@ -417,6 +429,52 @@ def workflow_menu(config: CLIConfig) -> None:
             print("❌ Invalid selection.")
 
 
+def inspect_data_files(config: CLIConfig) -> None:
+    while True:
+        print("\nInspect Data Files")
+        print("=" * 40)
+        print("[1] List JSON files")
+        print("[2] Show keys of a file")
+        print("[3] Count entries in a file")
+        print("[4] Show input vs ground truth samples")
+        print("[0] Back")
+        choice = input("Select an option: ").strip()
+        if choice == "0":
+            return
+
+        data_dir = Path(config.data_dir)
+        files = sorted([f for f in data_dir.glob("*.json")])
+        if not files:
+            print("⚠️ No JSON files found.")
+            continue
+
+        for i, f in enumerate(files, 1):
+            print(f"[{i}] {f.name}")
+        try:
+            idx = int(input("Select file #: ")) - 1
+            file_path = files[idx]
+        except (ValueError, IndexError):
+            print("❌ Invalid selection.")
+            continue
+
+        if choice == "2":
+            keys = get_json_keys(str(file_path))
+            print("Top-level keys:", keys)
+        elif choice == "3":
+            count = count_json_entries(str(file_path))
+            print(f"Number of entries: {count}")
+        elif choice == "4":
+            n = int(input("How many samples? ") or "3")
+            samples = preview_samples(str(file_path), n=n)
+            for i, (q, a) in enumerate(samples, 1):
+                print(f"{i}. Input: {q}\n   Ground truth: {a}\n")
+        elif choice == "1":
+            # already listed files
+            continue
+        else:
+            print("❌ Invalid selection.")
+
+
 def menu(config: CLIConfig, extra_args: List[str]) -> None:
     if extra_args:
         print("⚠️  Extra arguments ignored in menu mode.")
@@ -429,6 +487,8 @@ def menu(config: CLIConfig, extra_args: List[str]) -> None:
         print("[3] View Models (tree)")
         print("[4] View Configuration")
         print("[5] Suggested Workflows")
+        print("[6] View Project Tree")
+        print("[7] Inspect Data Files")
         print("[0] Exit")
 
         choice = input("Select an option: ").strip()
@@ -445,6 +505,11 @@ def menu(config: CLIConfig, extra_args: List[str]) -> None:
             config_menu(config)
         elif choice == "5":
             workflow_menu(config)
+        elif choice == "6":
+            depth = int(input("Depth (default=3): ") or "3")
+            print_tree(PROJECT_ROOT, depth=depth)
+        elif choice == "7":
+            inspect_data_files(config)
         else:
             print("❌ Invalid selection.")
 
@@ -452,7 +517,6 @@ def menu(config: CLIConfig, extra_args: List[str]) -> None:
 # ---------------------------------------------------------------------------
 # CLI parsing
 # ---------------------------------------------------------------------------
-
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="ConvFinQA workflow helper")

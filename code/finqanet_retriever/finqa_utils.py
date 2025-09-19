@@ -366,3 +366,51 @@ def read_mathqa_entry(entry, tokenizer):
         pre_text=pre_text,
         post_text=post_text,
         table=table)
+
+# === CLI Data Inspection Helpers ===
+
+def get_json_keys(file_path):
+    """Return the top-level keys from a JSON file."""
+    import json
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    if isinstance(data, dict):
+        return list(data.keys())
+    elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+        keys = set()
+        for entry in data[:5]:
+            keys.update(entry.keys())
+        return list(keys)
+    return []
+
+
+def count_json_entries(file_path):
+    """Count the number of entries in a JSON file (if it is a list)."""
+    import json
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        return len(data)
+    return 1
+
+
+def preview_samples(file_path, n=3):
+    """Show sample input/ground-truth pairs from a ConvFinQA JSON file."""
+    import json
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        return []
+
+    samples = []
+    for entry in data[:n]:
+        # ConvFinQA schema: question/answer or nested qa
+        question = entry.get("question")
+        answer = entry.get("answer")
+        if question is None and "qa" in entry:
+            qa = entry["qa"]
+            if isinstance(qa, list) and len(qa) > 0:
+                question = qa[0].get("question")
+                answer = qa[0].get("answer")
+        samples.append((question, answer))
+    return samples
