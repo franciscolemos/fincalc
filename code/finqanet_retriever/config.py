@@ -1,9 +1,15 @@
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class parameters():
 
     prog_name = "retriever"
 
-    # set up your own path here
-    root_path = "/home/francis/tomoro/ConvFinQA/"
+    # Base paths
+    root_path = PROJECT_ROOT
     output_path = "output/"
     cache_dir = "cache/"
 
@@ -15,16 +21,15 @@ class parameters():
     model_save_name = f"retriever-{model_size}"
 
     # use "train_turn.json", "dev_turn.json", and "test_turn.json"
-    train_file = root_path + "data/train_turn.json"
-    valid_file = root_path + "data/dev_turn.json"
-    test_file = root_path + "data/test_turn_private.json"
+    train_file = str(root_path / "data" / "train_turn.json")
+    valid_file = str(root_path / "data" / "dev_turn.json")
+    test_file = str(root_path / "data" / "test_turn_private.json")
 
     op_list_file = "operation_list.txt"
     const_list_file = "constant_list.txt"
 
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Using device:", device)
 
     mode = "train"
     resume_model_path = ""
